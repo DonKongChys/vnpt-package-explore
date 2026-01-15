@@ -1,6 +1,27 @@
 """
 Package Search & Report Tool - Streamlit Web UI
 Main application entry point
+
+Features:
+- Tab 1: Package Details (unified_packages_clean.csv)
+  * 17,287+ packages with full information
+  * Fuzzy search with adjustable threshold (50-100%)
+  * Regex search with field selection
+  * Filters: source, price range, data volume
+  * Export: Excel, CSV, Summary reports
+  
+- Tab 2: All Codes (all_codes.csv)
+  * 1,580+ package codes
+  * Fuzzy search for similarity matching
+  * Regex search for pattern matching
+  * Adjustable similarity threshold
+  * Export: CSV and text formats
+
+Both tabs support:
+- Smart pagination for large datasets
+- Multiple view modes (table/cards/list)
+- Session state management
+- Cached data loading for performance
 """
 
 import streamlit as st
@@ -68,10 +89,34 @@ def load_data():
         st.stop()
 
 
+@st.cache_data
+def load_all_codes():
+    """Load and cache all codes data"""
+    try:
+        df = pd.read_csv("all_codes.csv")
+        stats = {
+            'total_codes': len(df),
+            'unique_codes': df['package_code'].nunique()
+        }
+        return df, stats
+    except FileNotFoundError:
+        st.error("❌ File all_codes.csv không tìm thấy!")
+        st.stop()
+    except Exception as e:
+        st.error(f"❌ Lỗi khi load dữ liệu all_codes: {e}")
+        st.stop()
+
+
 @st.cache_resource
 def create_search_engine(df):
     """Create and cache search engine"""
     return FuzzySearchEngine(df)
+
+
+@st.cache_resource
+def create_codes_search_engine(_df_codes):
+    """Create and cache search engine for all_codes"""
+    return FuzzySearchEngine(_df_codes)
 
 
 def format_currency(value):
@@ -171,6 +216,22 @@ def main():
     st.markdown('<div class="main-header">📦 Package Search & Report Tool</div>', unsafe_allow_html=True)
     st.markdown("---")
     
+    # Create tabs for different datasets
+    tab1, tab2 = st.tabs(["📊 Package Details (unified_packages_clean.csv)", "📋 All Codes (all_codes.csv)"])
+    
+    with tab1:
+        render_packages_tab()
+    
+    with tab2:
+        render_all_codes_tab()
+    
+    # Footer
+    st.markdown("---")
+    st.caption("📦 Package Search & Report Tool | Powered by Streamlit & RapidFuzz")
+
+
+def render_packages_tab():
+    """Render the main packages tab"""
     # Load data
     with st.spinner("Đang tải dữ liệu..."):
         df, stats, loader = load_data()
@@ -726,10 +787,364 @@ def main():
                             st.session_state.search_results = filtered
                             st.session_state.current_page = 1
                             st.rerun()
+
+
+def render_all_codes_tab():
+    """Render the all codes tab"""
+    # Load all codes data
+    with st.spinner("Đang tải dữ liệu all_codes..."):
+        df_codes, stats_codes = load_all_codes()
+        codes_search_engine = create_codes_search_engine(df_codes)
     
-    # Footer
-    st.markdown("---")
-    st.caption("📦 Package Search & Report Tool | Powered by Streamlit & RapidFuzz")
+    # Sidebar - Statistics
+    with st.sidebar:
+        st.header("📊 Thống kê All Codes")
+        st.metric("Tổng số mã gói", f"{stats_codes['total_codes']:,}")
+        st.metric("Mã unique", f"{stats_codes['unique_codes']:,}")
+    
+    # Main content
+    st.subheader("🔍 Tìm kiếm mã gói")
+    
+    col1, col2, col3 = st.columns([3, 1, 1])
+    
+    with col1:
+        search_query_codes = st.text_input(
+            "Nhập mã gói cần tìm",
+            placeholder="Ví dụ: D15, BIG, 5G150... hoặc regex: ^MI_.*150.*$",
+            help="Fuzzy: tìm gần đúng | Regex: tìm theo pattern",
+            key="search_input_codes"
+        )
+    
+    with col2:
+        search_mode_codes = st.selectbox(
+            "Chế độ tìm",
+            options=["Fuzzy", "Regex"],
+            help="Fuzzy: Tìm gần đúng | Regex: Tìm theo pattern",
+            key="search_mode_codes"
+        )
+    
+    with col3:
+        max_results = st.number_input(
+            "Số kết quả",
+            min_value=5,
+            max_value=500,
+            value=50,
+            step=5,
+            key="max_results_codes"
+        )
+    
+    # Search mode specific options
+    search_threshold_codes = 70  # default
+    case_sensitive_codes = False  # default
+    
+    if search_mode_codes == "Regex":
+        col_regex1, col_regex2 = st.columns(2)
+        with col_regex1:
+            st.caption("💡 Ví dụ regex: `^MI_D.*` (bắt đầu MI_D) | `.*15.*` (chứa 15) | `^MI_(BIG|YOLO).*`")
+        with col_regex2:
+            case_sensitive_codes = st.checkbox("Case sensitive", value=False, key="case_codes")
+    else:
+        # Fuzzy search - show threshold and suggestions
+        search_threshold_codes = st.slider(
+            "Độ chính xác tìm kiếm (%)",
+            min_value=50,
+            max_value=100,
+            value=70,
+            step=5,
+            help="Độ tương đồng tối thiểu với từ khóa tìm kiếm",
+            key="threshold_codes"
+        )
+        
+        # Show suggestions
+        if search_query_codes and len(search_query_codes) >= 1:
+            try:
+                suggestions = codes_search_engine.get_suggestions(search_query_codes, limit=5)
+                if suggestions:
+                    st.caption(f"💡 Gợi ý: {', '.join(suggestions[:5])}")
+            except:
+                pass
+    
+    # Initialize session state for codes results
+    if 'codes_search_results' not in st.session_state:
+        st.session_state.codes_search_results = []
+    
+    # Search buttons
+    col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 4])
+    
+    with col_btn1:
+        search_button_codes = st.button("🔍 Tìm kiếm", type="primary", use_container_width=True, key="search_codes_btn")
+    
+    with col_btn2:
+        show_all_codes = st.button("📋 Show All", use_container_width=True, key="show_all_codes_btn")
+    
+    with col_btn3:
+        clear_codes = st.button("🗑️ Xóa", use_container_width=True, key="clear_codes_btn")
+    
+    if clear_codes:
+        st.session_state.codes_search_results = []
+        st.rerun()
+    
+    # Show all codes
+    if show_all_codes:
+        st.session_state.codes_search_results = df_codes.to_dict('records')
+        if 'codes_current_page' not in st.session_state:
+            st.session_state.codes_current_page = 1
+        st.rerun()
+    
+    # Perform search - trigger on button or when there's a query
+    perform_search = search_button_codes or (search_query_codes and search_query_codes.strip())
+    
+    if perform_search and search_query_codes and search_query_codes.strip():
+        with st.spinner("Đang tìm kiếm..."):
+            try:
+                if search_mode_codes == "Fuzzy":
+                    # Use fuzzy search - only search in package_code
+                    results_list = codes_search_engine.search(
+                        query=search_query_codes,
+                        top_n=max_results,
+                        threshold=search_threshold_codes,
+                        search_in='code'
+                    )
+                    st.session_state.codes_search_results = results_list
+                    
+                elif search_mode_codes == "Regex":
+                    # Use regex search
+                    try:
+                        results_list = codes_search_engine.search_regex(
+                            pattern=search_query_codes,
+                            search_in='code',
+                            case_sensitive=case_sensitive_codes,
+                            top_n=max_results
+                        )
+                        st.session_state.codes_search_results = results_list
+                        if not results_list:
+                            st.info(f"💡 Pattern '{search_query_codes}' không match với code nào. Thử pattern khác hoặc dùng fuzzy search.")
+                    except Exception as e:
+                        st.error(f"❌ Lỗi regex: {str(e)}")
+                        st.session_state.codes_search_results = []
+            except Exception as e:
+                st.error(f"❌ Lỗi tìm kiếm: {str(e)}")
+                st.session_state.codes_search_results = []
+    
+    # Display results
+    results_codes = st.session_state.codes_search_results
+    
+    if results_codes:
+        # Show score for fuzzy search
+        show_score = search_mode_codes == "Fuzzy" and '_similarity_score' in results_codes[0] if results_codes else False
+        
+        st.markdown(f'<div class="result-count">✅ Tìm thấy {len(results_codes)} mã gói</div>', unsafe_allow_html=True)
+        
+        # Pagination settings
+        col_view1, col_view2, col_view3 = st.columns([2, 2, 2])
+        
+        with col_view1:
+            view_mode_codes = st.radio(
+                "Chế độ hiển thị:",
+                options=["📋 Bảng", "📇 Danh sách"],
+                horizontal=True,
+                key="view_mode_codes"
+            )
+        
+        with col_view2:
+            if len(results_codes) > 50:
+                use_pagination_codes = st.checkbox("Sử dụng phân trang", value=True, key="pagination_codes")
+            else:
+                use_pagination_codes = False
+        
+        with col_view3:
+            if use_pagination_codes:
+                page_size_codes = st.selectbox(
+                    "Số mã/trang:",
+                    options=[50, 100, 200, 500],
+                    index=0,
+                    key="page_size_codes"
+                )
+        
+        # Pagination logic
+        if use_pagination_codes:
+            total_pages_codes = (len(results_codes) - 1) // page_size_codes + 1
+            
+            if 'codes_current_page' not in st.session_state:
+                st.session_state.codes_current_page = 1
+            
+            # Page navigation
+            col_nav1, col_nav2, col_nav3, col_nav4, col_nav5 = st.columns([1, 1, 2, 1, 1])
+            
+            with col_nav1:
+                if st.button("⏮️ Đầu", disabled=(st.session_state.codes_current_page == 1), key="first_codes"):
+                    st.session_state.codes_current_page = 1
+                    st.rerun()
+            
+            with col_nav2:
+                if st.button("◀️ Trước", disabled=(st.session_state.codes_current_page == 1), key="prev_codes"):
+                    st.session_state.codes_current_page -= 1
+                    st.rerun()
+            
+            with col_nav3:
+                st.markdown(f"<div style='text-align: center; padding: 0.5rem;'>Trang {st.session_state.codes_current_page} / {total_pages_codes}</div>", unsafe_allow_html=True)
+            
+            with col_nav4:
+                if st.button("▶️ Sau", disabled=(st.session_state.codes_current_page == total_pages_codes), key="next_codes"):
+                    st.session_state.codes_current_page += 1
+                    st.rerun()
+            
+            with col_nav5:
+                if st.button("⏭️ Cuối", disabled=(st.session_state.codes_current_page == total_pages_codes), key="last_codes"):
+                    st.session_state.codes_current_page = total_pages_codes
+                    st.rerun()
+            
+            # Get current page results
+            start_idx = (st.session_state.codes_current_page - 1) * page_size_codes
+            end_idx = min(start_idx + page_size_codes, len(results_codes))
+            paginated_results_codes = results_codes[start_idx:end_idx]
+            
+            st.caption(f"Hiển thị {start_idx + 1}-{end_idx} trong tổng số {len(results_codes)} mã")
+        else:
+            paginated_results_codes = results_codes
+        
+        if view_mode_codes == "📋 Bảng":
+            # Table view
+            display_df_codes = pd.DataFrame(paginated_results_codes)
+            
+            # Configure columns based on available data
+            column_config = {
+                "package_code": st.column_config.TextColumn(
+                    "Mã gói",
+                    width="large",
+                    help="Mã gói cước"
+                )
+            }
+            
+            # Add similarity score column if available
+            if '_similarity_score' in display_df_codes.columns and show_score:
+                display_df_codes = display_df_codes[['_similarity_score', 'package_code']]
+                display_df_codes.rename(columns={'_similarity_score': 'Score (%)'}, inplace=True)
+                column_config['Score (%)'] = st.column_config.NumberColumn(
+                    "Score (%)",
+                    help="Độ tương đồng với từ khóa tìm kiếm",
+                    format="%.1f%%"
+                )
+            else:
+                # Only show package_code
+                display_df_codes = display_df_codes[['package_code']]
+            
+            st.dataframe(
+                display_df_codes,
+                use_container_width=True,
+                hide_index=True,
+                height=400,
+                column_config=column_config
+            )
+        else:
+            # List view - display as a grid
+            cols_per_row = 4
+            
+            for i in range(0, len(paginated_results_codes), cols_per_row):
+                cols = st.columns(cols_per_row)
+                for j, col in enumerate(cols):
+                    if i + j < len(paginated_results_codes):
+                        item = paginated_results_codes[i + j]
+                        with col:
+                            if show_score and '_similarity_score' in item:
+                                st.caption(f"Score: {item['_similarity_score']:.1f}%")
+                            st.code(item['package_code'], language=None)
+        
+        # Export section
+        st.markdown("---")
+        st.subheader("📥 Xuất kết quả")
+        
+        col_export1, col_export2 = st.columns(2)
+        
+        with col_export1:
+            if st.button("📄 Export to CSV", use_container_width=True, key="export_csv_codes"):
+                try:
+                    df_export_codes = pd.DataFrame(results_codes)
+                    csv_data_codes = df_export_codes.to_csv(index=False, encoding='utf-8-sig')
+                    
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    filename = f"all_codes_filtered_{timestamp}.csv"
+                    
+                    st.download_button(
+                        label="💾 Tải xuống CSV",
+                        data=csv_data_codes.encode('utf-8-sig'),
+                        file_name=filename,
+                        mime="text/csv",
+                        key="download_csv_codes"
+                    )
+                    
+                    st.success(f"✅ File CSV đã sẵn sàng! ({len(results_codes):,} mã)")
+                    
+                except Exception as e:
+                    st.error(f"❌ Lỗi khi tạo CSV: {e}")
+        
+        with col_export2:
+            if st.button("📋 Export to Text", use_container_width=True, key="export_txt_codes"):
+                try:
+                    codes_text = "\n".join([item['package_code'] for item in results_codes])
+                    
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    filename = f"all_codes_list_{timestamp}.txt"
+                    
+                    st.download_button(
+                        label="💾 Tải xuống Text",
+                        data=codes_text,
+                        file_name=filename,
+                        mime="text/plain",
+                        key="download_txt_codes"
+                    )
+                    
+                    st.success(f"✅ File Text đã sẵn sàng! ({len(results_codes):,} mã)")
+                    
+                except Exception as e:
+                    st.error(f"❌ Lỗi khi tạo Text: {e}")
+    
+    elif search_query_codes and search_query_codes.strip():
+        st.warning(f"⚠️ Không tìm thấy mã gói phù hợp cho '{search_query_codes}'")
+        st.info("💡 Thử:\n- Giảm threshold nếu dùng Fuzzy\n- Kiểm tra regex pattern nếu dùng Regex\n- Chuyển sang mode tìm kiếm khác")
+    else:
+        st.info("💡 Nhập mã gói để bắt đầu tìm kiếm, hoặc click **📋 Show All** để xem toàn bộ!")
+        
+        # Show search examples
+        st.subheader("📌 Ví dụ tìm kiếm")
+        
+        col_ex1, col_ex2 = st.columns(2)
+        
+        with col_ex1:
+            st.markdown("**Fuzzy Search:**")
+            fuzzy_examples = [
+                ("D15", "Tìm codes chứa D15"),
+                ("BIG", "Tìm codes chứa BIG"),
+                ("YOLO", "Tìm codes chứa YOLO"),
+                ("5G150", "Tìm codes chứa 5G150")
+            ]
+            for query, desc in fuzzy_examples:
+                if st.button(f"🔍 `{query}` - {desc}", key=f"ex_fuzzy_{query}", use_container_width=True):
+                    st.session_state.search_input_codes = query
+                    st.rerun()
+        
+        with col_ex2:
+            st.markdown("**Regex Search:**")
+            regex_examples = [
+                ("^MI_D.*", "Bắt đầu với MI_D"),
+                (".*150.*", "Chứa 150"),
+                ("^MI_BIG.*", "Bắt đầu với MI_BIG"),
+                (".*YOLO.*", "Chứa YOLO")
+            ]
+            for pattern, desc in regex_examples:
+                if st.button(f"🔍 `{pattern}` - {desc}", key=f"ex_regex_{pattern.replace('.', '_').replace('*', 'x')}", use_container_width=True):
+                    st.session_state.search_input_codes = pattern
+                    st.rerun()
+        
+        # Show some sample codes
+        st.markdown("---")
+        st.markdown("**Một số mã gói mẫu:**")
+        sample_codes = df_codes.head(15)['package_code'].tolist()
+        
+        cols_sample = st.columns(5)
+        for idx, code in enumerate(sample_codes):
+            with cols_sample[idx % 5]:
+                st.code(code, language=None)
 
 
 if __name__ == "__main__":

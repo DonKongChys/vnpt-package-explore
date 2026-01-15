@@ -28,15 +28,23 @@ class FuzzySearchEngine:
         
     def _prepare_search_indices(self):
         """Prepare search indices for faster lookup"""
-        # Create search strings combining code and name
-        self.data['_search_string'] = (
-            self.data['package_code'].astype(str) + ' ' + 
-            self.data['package_name'].astype(str)
-        ).str.upper()
+        # Check if package_name column exists
+        has_package_name = 'package_name' in self.data.columns
+        
+        # Create search strings combining code and name (if available)
+        if has_package_name:
+            self.data['_search_string'] = (
+                self.data['package_code'].astype(str) + ' ' + 
+                self.data['package_name'].astype(str)
+            ).str.upper()
+            self.package_names = self.data['package_name'].astype(str).tolist()
+        else:
+            # Only use package_code for search
+            self.data['_search_string'] = self.data['package_code'].astype(str).str.upper()
+            self.package_names = []
         
         # Create list of codes for rapid search
         self.package_codes = self.data['package_code'].astype(str).tolist()
-        self.package_names = self.data['package_name'].astype(str).tolist()
         
     def search(
         self, 
@@ -76,8 +84,8 @@ class FuzzySearchEngine:
                 package['_match_field'] = 'package_code'
                 results.append(package)
         
-        # Search in package names
-        if search_in in ['name', 'both']:
+        # Search in package names (if available)
+        if search_in in ['name', 'both'] and self.package_names:
             name_matches = self._search_in_list(
                 query,
                 self.package_names,
@@ -285,28 +293,31 @@ class FuzzySearchEngine:
             
             if search_in in ['code', 'both', 'all']:
                 code = str(row.get('package_code', ''))
-                if regex.search(code):
+                if code and code != 'nan' and regex.search(code):
                     match_found = True
                     match_field = 'package_code'
             
             if not match_found and search_in in ['name', 'both', 'all']:
-                name = str(row.get('package_name', ''))
-                if regex.search(name):
-                    match_found = True
-                    match_field = 'package_name'
+                name = row.get('package_name', '')
+                if pd.notna(name) and str(name) and str(name) != 'nan':
+                    if regex.search(str(name)):
+                        match_found = True
+                        match_field = 'package_name'
             
             if not match_found and search_in in ['description', 'all']:
-                desc = str(row.get('description', ''))
-                if regex.search(desc):
-                    match_found = True
-                    match_field = 'description'
+                desc = row.get('description', '')
+                if pd.notna(desc) and str(desc) and str(desc) != 'nan':
+                    if regex.search(str(desc)):
+                        match_found = True
+                        match_field = 'description'
             
             if not match_found and search_in == 'all':
                 # Search in full description too
-                full_desc = str(row.get('full_description', ''))
-                if regex.search(full_desc):
-                    match_found = True
-                    match_field = 'full_description'
+                full_desc = row.get('full_description', '')
+                if pd.notna(full_desc) and str(full_desc) and str(full_desc) != 'nan':
+                    if regex.search(str(full_desc)):
+                        match_found = True
+                        match_field = 'full_description'
             
             if match_found:
                 package = row.to_dict()
