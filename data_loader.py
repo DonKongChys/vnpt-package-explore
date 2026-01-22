@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class PackageDataLoader:
     """Load and manage package data from CSV"""
     
-    def __init__(self, csv_path: str = "full_packages_mapping.csv"):
+    def __init__(self, csv_path: str = "full_packages_map.csv"):
         """
         Initialize data loader
         
@@ -371,7 +371,7 @@ class PackageDataLoader:
 
 
 # Convenience function for quick loading
-def load_packages(csv_path: str = "full_packages_mapping.csv") -> PackageDataLoader:
+def load_packages(csv_path: str = "full_packages_map.csv") -> PackageDataLoader:
     """
     Convenience function to create and return a data loader
     

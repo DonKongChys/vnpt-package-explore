@@ -77,12 +77,12 @@ st.markdown("""
 def load_data():
     """Load and cache package data"""
     try:
-        loader = PackageDataLoader("full_packages_mapping.csv")
+        loader = PackageDataLoader("full_packages_map.csv")
         df = loader.load_data()
         stats = loader.get_statistics()
         return df, stats, loader
     except FileNotFoundError:
-        st.error("❌ File full_packages_mapping.csv không tìm thấy!")
+        st.error("❌ File full_packages_map.csv không tìm thấy!")
         st.stop()
     except Exception as e:
         st.error(f"❌ Lỗi khi load dữ liệu: {e}")
@@ -345,7 +345,7 @@ def main():
     st.markdown("---")
     
     # Create tabs for different datasets
-    tab1, tab2 = st.tabs(["📊 Package Details (full_packages_mapping.csv)", "📋 All Codes (all_codes.csv)"])
+    tab1, tab2 = st.tabs(["📊 Package Details (full_packages_map.csv)", "📋 All Codes (all_codes.csv)"])
     
     with tab1:
         render_packages_tab()
