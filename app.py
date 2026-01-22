@@ -77,12 +77,12 @@ st.markdown("""
 def load_data():
     """Load and cache package data"""
     try:
-        loader = PackageDataLoader("unified_packages_clean.csv")
+        loader = PackageDataLoader("full_packages_mapping.csv")
         df = loader.load_data()
         stats = loader.get_statistics()
         return df, stats, loader
     except FileNotFoundError:
-        st.error("❌ File unified_packages_clean.csv không tìm thấy!")
+        st.error("❌ File full_packages_mapping.csv không tìm thấy!")
         st.stop()
     except Exception as e:
         st.error(f"❌ Lỗi khi load dữ liệu: {e}")
@@ -173,8 +173,11 @@ def display_package_card(package, show_score=False):
             st.write(f"🌐 **Nguồn:** {package.get('source', '-')}")
         
         with col2:
-            st.markdown("**Dung lượng**")
+            st.markdown("**Dung lượng & Lợi ích**")
             st.write(f"📊 **Data:** {format_data_gb(package.get('data_gb'))}")
+            st.write(f"⏱️ **Thời gian hiệu lực:** {format_cycle(package.get('duration'))}")
+            if package.get('data_limit_behavior'):
+                st.write(f"🔄 **Hết data:** {package.get('data_limit_behavior')}")
             st.write(f"📞 **Phút gọi:** {package.get('voice_minutes', '-')}")
             st.write(f"💬 **SMS:** {package.get('sms_count', '-')}")
             st.write(f"🔖 **Loại:** {package.get('package_type', '-')}")
@@ -196,6 +199,37 @@ def display_package_card(package, show_score=False):
             with st.expander("Xem chi tiết đầy đủ"):
                 st.text(package['full_description'])
         
+        # Benefits section
+        has_benefits = False
+        if package.get('benefit_free_internal_calls'):
+            st.markdown("**📞 Gọi nội mạng miễn phí:**")
+            st.caption(package['benefit_free_internal_calls'])
+            has_benefits = True
+        if package.get('benefit_free_external_calls'):
+            st.markdown("**📱 Gọi ngoại mạng miễn phí:**")
+            st.caption(package['benefit_free_external_calls'])
+            has_benefits = True
+        if package.get('benefit_free_sms'):
+            st.markdown("**💬 SMS miễn phí:**")
+            st.caption(package['benefit_free_sms'])
+            has_benefits = True
+        if package.get('benefit_free_social_media_data'):
+            st.markdown("**📱 Data mạng xã hội miễn phí:**")
+            st.caption(package['benefit_free_social_media_data'])
+            has_benefits = True
+        if package.get('benefit_free_tv'):
+            st.markdown("**📺 TV miễn phí:**")
+            st.caption(package['benefit_free_tv'])
+            has_benefits = True
+        if package.get('benefit_other_benefits'):
+            st.markdown("**🎁 Lợi ích khác:**")
+            st.caption(package['benefit_other_benefits'])
+            has_benefits = True
+        if package.get('benefits'):
+            st.markdown("**✨ Lợi ích:**")
+            st.info(package['benefits'])
+            has_benefits = True
+        
         # Additional info
         if package.get('eligibility'):
             st.markdown("**📋 Điều kiện:**")
@@ -205,8 +239,102 @@ def display_package_card(package, show_score=False):
             st.markdown("**🔄 Chính sách gia hạn:**")
             st.caption(package['renewal_policy'])
         
+        # Variants and related packages
+        if package.get('variants'):
+            try:
+                import ast
+                variants = ast.literal_eval(package['variants']) if isinstance(package['variants'], str) else package['variants']
+                if variants:
+                    with st.expander("🔄 Các biến thể"):
+                        if isinstance(variants, list):
+                            for variant in variants[:5]:  # Show first 5
+                                if isinstance(variant, dict):
+                                    st.write(f"- {variant.get('code', 'N/A')}: {variant.get('full_name', 'N/A')}")
+            except:
+                pass
+        
+        if package.get('related_packages'):
+            try:
+                import ast
+                related = ast.literal_eval(package['related_packages']) if isinstance(package['related_packages'], str) else package['related_packages']
+                if related:
+                    with st.expander("🔗 Gói liên quan"):
+                        if isinstance(related, list):
+                            for rel in related[:5]:  # Show first 5
+                                if isinstance(rel, dict):
+                                    code = rel.get('code', 'N/A')
+                                    name = rel.get('full_name', 'N/A')
+                                    url = rel.get('url', '')
+                                    if url:
+                                        st.write(f"- [{code}]({url}): {name}")
+                                    else:
+                                        st.write(f"- {code}: {name}")
+            except:
+                pass
+        
+        # Notes (if different from description)
+        if package.get('notes') and package.get('notes') != package.get('description', ''):
+            with st.expander("📝 Ghi chú"):
+                st.text(package['notes'])
+        
+        # Registration info (original format)
+        if package.get('registration') and package.get('registration') != package.get('registration_syntax', ''):
+            try:
+                import ast
+                reg_info = package.get('registration', '')
+                if isinstance(reg_info, str) and reg_info.startswith('{'):
+                    reg_dict = ast.literal_eval(reg_info)
+                    if isinstance(reg_dict, dict):
+                        with st.expander("📋 Thông tin đăng ký đầy đủ"):
+                            for key, value in reg_dict.items():
+                                st.write(f"**{key}:** {value}")
+            except:
+                pass
+        
+        # Original link
         if package.get('original_link'):
             st.markdown(f"**🔗 Link gốc:** [{package['original_link']}]({package['original_link']})")
+        elif package.get('source_url'):
+            st.markdown(f"**🔗 URL nguồn:** [{package['source_url']}]({package['source_url']})")
+        
+        # Source file and relationship type
+        col_meta1, col_meta2 = st.columns(2)
+        with col_meta1:
+            if package.get('source_file'):
+                st.caption(f"📄 File nguồn: {package['source_file']}")
+        with col_meta2:
+            if package.get('relationship_type'):
+                st.caption(f"🔗 Loại quan hệ: {package['relationship_type']}")
+        
+        # Show original column values if they differ from mapped ones
+        with st.expander("📊 Thông tin gốc (nếu khác)"):
+            original_fields = {
+                'code': 'Mã gói gốc',
+                'full_name': 'Tên đầy đủ gốc',
+                'cycle': 'Chu kỳ gốc',
+                'data_size': 'Dung lượng gốc',
+                'source_url': 'URL nguồn gốc',
+                'registration': 'Thông tin đăng ký gốc'
+            }
+            for field, label in original_fields.items():
+                if package.get(field):
+                    mapped_field = {
+                        'code': 'package_code',
+                        'full_name': 'package_name',
+                        'cycle': 'cycle_days',
+                        'data_size': 'data_gb',
+                        'source_url': 'original_link',
+                        'registration': 'registration_syntax'
+                    }.get(field)
+                    
+                    # Only show if different from mapped value
+                    if mapped_field:
+                        mapped_value = package.get(mapped_field, '')
+                        original_value = package.get(field, '')
+                        if str(original_value) != str(mapped_value) and original_value:
+                            st.write(f"**{label}:** {original_value}")
+                    else:
+                        st.write(f"**{label}:** {package.get(field)}")
 
 
 def main():
@@ -217,7 +345,7 @@ def main():
     st.markdown("---")
     
     # Create tabs for different datasets
-    tab1, tab2 = st.tabs(["📊 Package Details (unified_packages_clean.csv)", "📋 All Codes (all_codes.csv)"])
+    tab1, tab2 = st.tabs(["📊 Package Details (full_packages_mapping.csv)", "📋 All Codes (all_codes.csv)"])
     
     with tab1:
         render_packages_tab()
@@ -565,46 +693,79 @@ def render_packages_tab():
             if show_full_desc:
                 st.caption(f"📊 Debug: Columns available = {list(display_df.columns)}")
             
-            # Select columns to display
-            display_columns = [
-                'package_code', 'package_name', 'source', 'price', 
-                'cycle_days', 'data_gb', 'voice_minutes', 'description'
-            ]
+            # Get all columns except internal search fields
+            all_columns = list(display_df.columns)
+            internal_fields = ['_similarity_score', '_match_field', '_search_string']
             
-            # Add full description if requested
+            # Start with all columns, but put similarity score first if it exists
+            display_columns = []
+            if '_similarity_score' in all_columns:
+                display_columns.append('_similarity_score')
+            
+            # Add all other columns (excluding internal fields except similarity)
+            for col in all_columns:
+                if col not in internal_fields and col not in display_columns:
+                    display_columns.append(col)
+            
+            # Add full description if requested and not already included
             if show_full_desc:
-                # Ensure full_description exists in dataframe
-                if 'full_description' not in display_df.columns:
-                    st.warning("⚠️ Column 'full_description' không tồn tại trong data. Sử dụng 'description' thay thế.")
-                    display_df['full_description'] = display_df['description'] if 'description' in display_df.columns else ''
-                
-                display_columns.append('full_description')
-                st.caption(f"✅ Đã thêm cột 'full_description' vào display")
-            
-            # Add similarity score if available
-            if '_similarity_score' in display_df.columns:
-                display_columns.insert(0, '_similarity_score')
-            
-            # Filter existing columns
-            display_columns = [col for col in display_columns if col in display_df.columns]
+                if 'full_description' not in display_columns:
+                    if 'full_description' in display_df.columns:
+                        display_columns.append('full_description')
+                    elif 'notes' in display_df.columns:
+                        display_columns.append('notes')
+                    elif 'description' in display_df.columns:
+                        display_columns.append('description')
             
             # Format display
             display_df_formatted = display_df[display_columns].copy()
             
-            # Rename columns
+            # Rename columns - comprehensive mapping for all columns
             column_names = {
                 '_similarity_score': 'Score (%)',
+                # Mapped columns
                 'package_code': 'Mã gói',
-                'package_name': 'Tên',
+                'package_name': 'Tên gói',
                 'source': 'Nguồn',
-                'price': 'Giá (đ)',
+                'price': 'Giá (VNĐ)',
                 'cycle_days': 'Chu kỳ (ngày)',
+                'duration': 'Thời gian hiệu lực',
                 'data_gb': 'Data (GB)',
-                'voice_minutes': 'Phút gọi',
+                'data_limit_behavior': 'Hết data',
+                'package_type': 'Loại gói',
                 'description': 'Mô tả',
-                'full_description': 'Mô tả chi tiết'
+                'full_description': 'Mô tả chi tiết',
+                'registration_syntax': 'Cú pháp ĐK',
+                'cancellation_syntax': 'Cú pháp hủy',
+                'check_syntax': 'Cú pháp tra cứu',
+                'eligibility': 'Điều kiện',
+                'renewal_policy': 'Chính sách GH',
+                'support_hotline': 'Hotline',
+                'original_link': 'Link gốc',
+                'benefits': 'Lợi ích',
+                'variants': 'Biến thể',
+                'related_packages': 'Gói liên quan',
+                'benefit_free_internal_calls': 'Gọi nội mạng',
+                'benefit_free_external_calls': 'Gọi ngoại mạng',
+                'benefit_free_sms': 'SMS miễn phí',
+                'benefit_free_social_media_data': 'Data MXH',
+                'benefit_free_tv': 'TV miễn phí',
+                'benefit_other_benefits': 'Lợi ích khác',
+                'source_file': 'File nguồn',
+                'relationship_type': 'Loại quan hệ',
+                'voice_minutes': 'Phút gọi',
+                'sms_count': 'SMS',
+                # Original column names (keep as is if not mapped)
+                'code': 'Mã gói (gốc)',
+                'full_name': 'Tên đầy đủ',
+                'cycle': 'Chu kỳ',
+                'data_size': 'Dung lượng data',
+                'source_url': 'URL nguồn',
+                'registration': 'Đăng ký',
+                'notes': 'Ghi chú'
             }
-            display_df_formatted.rename(columns=column_names, inplace=True)
+            # Rename columns - only rename if mapping exists, keep original name otherwise
+            display_df_formatted.rename(columns={k: v for k, v in column_names.items() if k in display_df_formatted.columns}, inplace=True)
             
             # Truncate full description if present
             if show_full_desc and 'Mô tả chi tiết' in display_df_formatted.columns:
@@ -613,27 +774,39 @@ def render_packages_tab():
                 )
             
             # Format numbers
-            if 'Giá (đ)' in display_df_formatted.columns:
-                display_df_formatted['Giá (đ)'] = display_df_formatted['Giá (đ)'].apply(
+            price_col = 'Giá (VNĐ)' if 'Giá (VNĐ)' in display_df_formatted.columns else 'Giá (đ)'
+            if price_col in display_df_formatted.columns:
+                display_df_formatted[price_col] = display_df_formatted[price_col].apply(
                     lambda x: f"{x:,.0f}" if pd.notna(x) else '-'
                 )
             
-            # Adjust height based on whether full description is shown
-            table_height = 600 if show_full_desc else 400
+            # Format cycle_days
+            if 'Chu kỳ (ngày)' in display_df_formatted.columns:
+                display_df_formatted['Chu kỳ (ngày)'] = display_df_formatted['Chu kỳ (ngày)'].apply(
+                    lambda x: format_cycle(x) if pd.notna(x) else '-'
+                )
             
-            # Configure column widths
+            # Format duration
+            if 'Thời gian hiệu lực' in display_df_formatted.columns:
+                display_df_formatted['Thời gian hiệu lực'] = display_df_formatted['Thời gian hiệu lực'].apply(
+                    lambda x: format_cycle(x) if pd.notna(x) else '-'
+                )
+            
+            # Adjust height based on number of columns and whether full description is shown
+            num_cols = len(display_df_formatted.columns)
+            table_height = min(800, max(400, 200 + num_cols * 30)) if show_full_desc else min(600, max(300, 150 + num_cols * 20))
+            
+            # Configure column widths for text columns
             column_config = {}
-            if 'Mô tả chi tiết' in display_df_formatted.columns:
-                column_config['Mô tả chi tiết'] = st.column_config.TextColumn(
-                    "Mô tả chi tiết",
-                    width="large",
-                    help="Click vào row để xem full text"
-                )
-            if 'Mô tả' in display_df_formatted.columns:
-                column_config['Mô tả'] = st.column_config.TextColumn(
-                    "Mô tả",
-                    width="medium"
-                )
+            text_columns = ['Mô tả', 'Mô tả chi tiết', 'Lợi ích', 'Biến thể', 'Gói liên quan', 
+                          'Ghi chú', 'Điều kiện', 'Chính sách GH', 'URL nguồn', 'Thông tin đăng ký gốc']
+            for col in text_columns:
+                if col in display_df_formatted.columns:
+                    column_config[col] = st.column_config.TextColumn(
+                        col,
+                        width="large" if col in ['Mô tả chi tiết', 'Lợi ích', 'Biến thể', 'Gói liên quan'] else "medium",
+                        help="Click vào row để xem full text"
+                    )
             
             st.dataframe(
                 display_df_formatted,
@@ -808,12 +981,24 @@ def render_all_codes_tab():
     col1, col2, col3 = st.columns([3, 1, 1])
     
     with col1:
+        # Get preset value if button was clicked
+        preset_value = st.session_state.get("search_query_codes_value", "")
+        
+        # If there's a preset value, delete the widget key to reset it
+        if preset_value and 'search_input_codes' in st.session_state:
+            del st.session_state.search_input_codes
+        
         search_query_codes = st.text_input(
             "Nhập mã gói cần tìm",
             placeholder="Ví dụ: D15, BIG, 5G150... hoặc regex: ^MI_.*150.*$",
             help="Fuzzy: tìm gần đúng | Regex: tìm theo pattern",
-            key="search_input_codes"
+            key="search_input_codes",
+            value=preset_value if preset_value else ""
         )
+        
+        # Clear preset value after using it
+        if preset_value:
+            st.session_state.search_query_codes_value = ""
     
     with col2:
         search_mode_codes = st.selectbox(
@@ -1120,7 +1305,11 @@ def render_all_codes_tab():
             ]
             for query, desc in fuzzy_examples:
                 if st.button(f"🔍 `{query}` - {desc}", key=f"ex_fuzzy_{query}", use_container_width=True):
-                    st.session_state.search_input_codes = query
+                    # Set the value in session state, which will be used by text_input
+                    st.session_state.search_query_codes_value = query
+                    # Clear the widget's internal state by rerunning
+                    if 'search_input_codes' in st.session_state:
+                        del st.session_state.search_input_codes
                     st.rerun()
         
         with col_ex2:
@@ -1133,7 +1322,11 @@ def render_all_codes_tab():
             ]
             for pattern, desc in regex_examples:
                 if st.button(f"🔍 `{pattern}` - {desc}", key=f"ex_regex_{pattern.replace('.', '_').replace('*', 'x')}", use_container_width=True):
-                    st.session_state.search_input_codes = pattern
+                    # Set the value in session state, which will be used by text_input
+                    st.session_state.search_query_codes_value = pattern
+                    # Clear the widget's internal state by rerunning
+                    if 'search_input_codes' in st.session_state:
+                        del st.session_state.search_input_codes
                     st.rerun()
         
         # Show some sample codes

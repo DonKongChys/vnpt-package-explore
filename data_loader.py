@@ -7,6 +7,7 @@ import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Optional
 import logging
+import re
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 class PackageDataLoader:
     """Load and manage package data from CSV"""
     
-    def __init__(self, csv_path: str = "unified_packages_clean.csv"):
+    def __init__(self, csv_path: str = "full_packages_mapping.csv"):
         """
         Initialize data loader
         
@@ -62,17 +63,189 @@ class PackageDataLoader:
         if self._data is None:
             return
         
+        # Map new column structure to old structure (keep both original and mapped names)
+        column_mapping = {
+            'code': 'package_code',
+            'full_name': 'package_name',
+            'cycle': 'cycle_days',
+            'data_size': 'data_gb',
+            'source_url': 'original_link',
+            'description': 'description',
+            'registration': 'registration_syntax',
+            'package_type': 'package_type',
+            'source': 'source',
+            'duration': 'duration',
+            'data_limit_behavior': 'data_limit_behavior',
+            'benefits': 'benefits',
+            'variants': 'variants',
+            'related_packages': 'related_packages',
+            'benefit_free_internal_calls': 'benefit_free_internal_calls',
+            'benefit_free_external_calls': 'benefit_free_external_calls',
+            'benefit_free_sms': 'benefit_free_sms',
+            'benefit_free_social_media_data': 'benefit_free_social_media_data',
+            'benefit_free_tv': 'benefit_free_tv',
+            'benefit_other_benefits': 'benefit_other_benefits',
+            'source_file': 'source_file',
+            'relationship_type': 'relationship_type',
+            'notes': 'notes'  # Keep notes as well
+        }
+        
+        # Create mapped columns but keep original columns too
+        for old_col, new_col in column_mapping.items():
+            if old_col in self._data.columns:
+                # Create mapped column if it doesn't exist
+                if new_col not in self._data.columns:
+                    self._data[new_col] = self._data[old_col]
+                # Keep original column name as well (for display)
+                if old_col != new_col:
+                    # Original column already exists, no need to duplicate
+                    pass
+        
+        # Handle full_description: use notes if available, otherwise use description
+        if 'full_description' not in self._data.columns:
+            if 'notes' in self._data.columns:
+                self._data['full_description'] = self._data['notes']
+            elif 'description' in self._data.columns:
+                self._data['full_description'] = self._data['description']
+            else:
+                self._data['full_description'] = ''
+        
+        # Parse cycle_days from "360 ngày" format
+        if 'cycle_days' in self._data.columns:
+            def parse_cycle(cycle_str):
+                if pd.isna(cycle_str) or cycle_str == '':
+                    return None
+                try:
+                    # Try to extract number from "360 ngày" or "12 tháng"
+                    cycle_str = str(cycle_str).strip()
+                    if 'tháng' in cycle_str or 'thang' in cycle_str.lower():
+                        # Extract number and multiply by 30
+                        num = float(re.search(r'[\d.]+', cycle_str).group())
+                        return num * 30
+                    elif 'ngày' in cycle_str or 'ngay' in cycle_str.lower():
+                        # Extract number
+                        num = float(re.search(r'[\d.]+', cycle_str).group())
+                        return num
+                    else:
+                        # Try direct conversion
+                        return float(cycle_str)
+                except:
+                    return None
+            
+            self._data['cycle_days'] = self._data['cycle_days'].apply(parse_cycle)
+        
+        # Parse data_gb from "2GB" format
+        if 'data_gb' in self._data.columns:
+            def parse_data_size(data_str):
+                if pd.isna(data_str) or data_str == '':
+                    return None
+                try:
+                    data_str = str(data_str).strip().upper()
+                    # Extract number from "2GB", "1.5GB", etc.
+                    match = re.search(r'[\d.]+', data_str)
+                    if match:
+                        return float(match.group())
+                    return None
+                except:
+                    return None
+            
+            self._data['data_gb'] = self._data['data_gb'].apply(parse_data_size)
+        
+        # Parse registration syntax from dict/json string
+        if 'registration_syntax' in self._data.columns:
+            def parse_registration(reg_str):
+                if pd.isna(reg_str) or reg_str == '':
+                    return ''
+                try:
+                    import ast
+                    if isinstance(reg_str, str) and reg_str.startswith('{'):
+                        reg_dict = ast.literal_eval(reg_str)
+                        if isinstance(reg_dict, dict):
+                            return reg_dict.get('sms_syntax', '')
+                    return str(reg_str)
+                except:
+                    return str(reg_str)
+            
+            self._data['registration_syntax'] = self._data['registration_syntax'].apply(parse_registration)
+        
+        # Parse duration from "360 ngày" format (similar to cycle)
+        if 'duration' in self._data.columns:
+            def parse_duration(duration_str):
+                if pd.isna(duration_str) or duration_str == '':
+                    return None
+                try:
+                    duration_str = str(duration_str).strip()
+                    if 'tháng' in duration_str or 'thang' in duration_str.lower():
+                        num = float(re.search(r'[\d.]+', duration_str).group())
+                        return num * 30
+                    elif 'ngày' in duration_str or 'ngay' in duration_str.lower():
+                        num = float(re.search(r'[\d.]+', duration_str).group())
+                        return num
+                    else:
+                        return float(duration_str)
+                except:
+                    return None
+            
+            self._data['duration'] = self._data['duration'].apply(parse_duration)
+        
         # Convert numeric columns
-        numeric_cols = ['price', 'cycle_days', 'data_gb', 'sms_count']
+        numeric_cols = ['price', 'cycle_days', 'data_gb']
         for col in numeric_cols:
             if col in self._data.columns:
                 self._data[col] = pd.to_numeric(self._data[col], errors='coerce')
+        
+        # Add missing columns with default values
+        if 'voice_minutes' not in self._data.columns:
+            self._data['voice_minutes'] = None
+        if 'sms_count' not in self._data.columns:
+            self._data['sms_count'] = None
+        if 'cancellation_syntax' not in self._data.columns:
+            self._data['cancellation_syntax'] = ''
+        if 'check_syntax' not in self._data.columns:
+            self._data['check_syntax'] = ''
+        if 'eligibility' not in self._data.columns:
+            self._data['eligibility'] = ''
+        if 'renewal_policy' not in self._data.columns:
+            self._data['renewal_policy'] = ''
+        if 'support_hotline' not in self._data.columns:
+            self._data['support_hotline'] = ''
+        if 'duration' not in self._data.columns:
+            self._data['duration'] = None
+        if 'data_limit_behavior' not in self._data.columns:
+            self._data['data_limit_behavior'] = ''
+        if 'benefits' not in self._data.columns:
+            self._data['benefits'] = ''
+        if 'variants' not in self._data.columns:
+            self._data['variants'] = ''
+        if 'related_packages' not in self._data.columns:
+            self._data['related_packages'] = ''
+        if 'benefit_free_internal_calls' not in self._data.columns:
+            self._data['benefit_free_internal_calls'] = ''
+        if 'benefit_free_external_calls' not in self._data.columns:
+            self._data['benefit_free_external_calls'] = ''
+        if 'benefit_free_sms' not in self._data.columns:
+            self._data['benefit_free_sms'] = ''
+        if 'benefit_free_social_media_data' not in self._data.columns:
+            self._data['benefit_free_social_media_data'] = ''
+        if 'benefit_free_tv' not in self._data.columns:
+            self._data['benefit_free_tv'] = ''
+        if 'benefit_other_benefits' not in self._data.columns:
+            self._data['benefit_other_benefits'] = ''
+        if 'source_file' not in self._data.columns:
+            self._data['source_file'] = ''
+        if 'relationship_type' not in self._data.columns:
+            self._data['relationship_type'] = ''
         
         # Fill NaN values for string columns
         string_cols = [
             'package_code', 'package_name', 'description', 'full_description',
             'registration_syntax', 'cancellation_syntax', 'check_syntax',
-            'eligibility', 'renewal_policy', 'support_hotline', 'original_link'
+            'eligibility', 'renewal_policy', 'support_hotline', 'original_link',
+            'data_limit_behavior', 'benefits', 'variants', 'related_packages',
+            'benefit_free_internal_calls', 'benefit_free_external_calls',
+            'benefit_free_sms', 'benefit_free_social_media_data',
+            'benefit_free_tv', 'benefit_other_benefits', 'source_file',
+            'relationship_type', 'package_type'
         ]
         for col in string_cols:
             if col in self._data.columns:
@@ -198,7 +371,7 @@ class PackageDataLoader:
 
 
 # Convenience function for quick loading
-def load_packages(csv_path: str = "unified_packages_clean.csv") -> PackageDataLoader:
+def load_packages(csv_path: str = "full_packages_mapping.csv") -> PackageDataLoader:
     """
     Convenience function to create and return a data loader
     

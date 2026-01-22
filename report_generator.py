@@ -21,14 +21,17 @@ logger = logging.getLogger(__name__)
 class ReportGenerator:
     """Generate formatted reports from package data"""
     
-    # Column display names (Vietnamese)
+    # Column display names (Vietnamese) - includes both mapped and original column names
     COLUMN_NAMES = {
+        # Mapped columns
         'source': 'Nguồn',
         'package_code': 'Mã gói',
         'package_name': 'Tên gói',
         'price': 'Giá (VNĐ)',
         'cycle_days': 'Chu kỳ (ngày)',
+        'duration': 'Thời gian hiệu lực',
         'data_gb': 'Data (GB)',
+        'data_limit_behavior': 'Hết data',
         'voice_minutes': 'Phút gọi',
         'sms_count': 'SMS',
         'package_type': 'Loại gói',
@@ -40,7 +43,26 @@ class ReportGenerator:
         'eligibility': 'Điều kiện',
         'renewal_policy': 'Chính sách GH',
         'support_hotline': 'Hotline',
-        'original_link': 'Link gốc'
+        'original_link': 'Link gốc',
+        'benefits': 'Lợi ích',
+        'variants': 'Biến thể',
+        'related_packages': 'Gói liên quan',
+        'benefit_free_internal_calls': 'Gọi nội mạng',
+        'benefit_free_external_calls': 'Gọi ngoại mạng',
+        'benefit_free_sms': 'SMS miễn phí',
+        'benefit_free_social_media_data': 'Data MXH',
+        'benefit_free_tv': 'TV miễn phí',
+        'benefit_other_benefits': 'Lợi ích khác',
+        'source_file': 'File nguồn',
+        'relationship_type': 'Loại quan hệ',
+        # Original column names from CSV
+        'code': 'Mã gói (gốc)',
+        'full_name': 'Tên đầy đủ',
+        'cycle': 'Chu kỳ',
+        'data_size': 'Dung lượng data',
+        'source_url': 'URL nguồn',
+        'registration': 'Đăng ký',
+        'notes': 'Ghi chú'
     }
     
     def __init__(self):
